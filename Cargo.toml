@@ -5,6 +5,8 @@ authors = ["Marc Brinkmann <git@marcbrinkmann.de>"]
 repository = "https://github.com/mbr/pid_control-rs"
 documentation = "http://mbr.github.io/pid_control-rs/pid_control/"
 description = """A PID controller library"""
+categories = ["no-std"]
+
 license = "MIT"
 
 [dependencies]

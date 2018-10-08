@@ -16,12 +16,11 @@
 
 // FIXME: it may be worth to explore http://de.mathworks.com/help/simulink/slref/pidcontroller.html
 //        for additional features/inspiration
-
-extern crate core;
+#![no_std]
 
 pub mod util;
 
-use std::f64;
+use core::f64;
 
 /// A generic controller interface.
 ///
