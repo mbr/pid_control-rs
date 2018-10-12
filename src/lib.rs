@@ -29,21 +29,21 @@ use core::f64;
 ///
 /// Many controllers possess a set of adjustable parameters as well as a set
 /// of input-value dependant state variables.
-pub trait Controller {
+pub trait Controller<T> {
     /// Record a measurement from the plant.
     ///
     /// Records a new values. `delta_t` is the time since the last update in
     /// seconds.
-    fn update(&mut self, value: f64, delta_t: f64) -> f64;
+    fn update(&mut self, value: T, delta_t: T) -> T;
 
     /// Adjust set target for the plant.
     ///
     /// The controller will usually try to adjust its output (from `update`) in
     /// a way that results in the plant approaching `target`.
-    fn set_target(&mut self, target: f64);
+    fn set_target(&mut self, target: T);
 
     /// Retrieve target value.
-    fn target(&self) -> f64;
+    fn target(&self) -> T;
 
     /// Reset internal state.
     ///
@@ -86,37 +86,38 @@ pub enum DerivativeMode {
 ///
 /// `d_mode` The `DerivativeMode`, the default is `OnMeasurement`.
 #[derive(Debug, Clone)]
-pub struct PIDController {
+pub struct PIDController<T> {
     /// Proportional gain
-    pub p_gain: f64,
+    pub p_gain: T,
 
     /// Integral gain
-    pub i_gain: f64,
+    pub i_gain: T,
 
     /// Differential gain,
-    pub d_gain: f64,
+    pub d_gain: T,
 
-    target: f64,
+    target: T,
 
     // Integral range limits
-    pub i_min: f64,
-    pub i_max: f64,
+    pub i_min: T,
+    pub i_max: T,
 
     // Output range limits
-    pub out_min: f64,
-    pub out_max: f64,
+    pub out_min: T,
+    pub out_max: T,
 
     pub d_mode: DerivativeMode,
 
     // The PIDs internal state. All other attributes are configuration values
-    err_sum: f64,
-    prev_value: f64,
-    prev_error: f64,
+    err_sum: T,
+    prev_value: T,
+    prev_error: T,
+    init : bool
 }
 
-impl PIDController {
+impl PIDController<f64> {
     /// Creates a new PID Controller.
-    pub fn new(p_gain: f64, i_gain: f64, d_gain: f64) -> PIDController {
+    pub fn new(p_gain: f64, i_gain: f64, d_gain: f64) -> PIDController<f64> {
         PIDController{
             p_gain: p_gain,
             i_gain: i_gain,
@@ -135,6 +136,7 @@ impl PIDController {
             out_max: f64::INFINITY,
 
             d_mode: DerivativeMode::OnMeasurement,
+            init : true
         }
     }
 
@@ -148,7 +150,43 @@ impl PIDController {
     }
 }
 
-impl Controller for PIDController {
+
+impl PIDController<i64> {
+    /// Creates a new PID Controller.
+    pub fn new(p_gain: i64, i_gain: i64, d_gain: i64) -> PIDController<i64> {
+        PIDController{
+            p_gain: p_gain,
+            i_gain: i_gain,
+            d_gain: d_gain,
+
+            target: 0,
+
+            err_sum: 0,
+            prev_value: 0,
+            prev_error: 0,
+
+            i_min: i64::min_value(),
+            i_max: i64::max_value(),
+
+            out_min: -i64::min_value(),
+            out_max: i64::max_value(),
+
+            d_mode: DerivativeMode::OnMeasurement,
+            init : true
+        }
+    }
+
+    /// Convenience function to set `i_min`/`i_max` and `out_min`/`out_max`
+    /// to the same values simultaneously.
+    pub fn set_limits(&mut self, min: i64, max: i64) {
+        self.i_min = min;
+        self.i_max = max;
+        self.out_min = min;
+        self.out_max = max;
+    }
+}
+
+impl Controller<f64> for PIDController<f64> {
     fn set_target(&mut self, target: f64) {
         self.target = target;
     }
@@ -171,7 +209,8 @@ impl Controller for PIDController {
         let i_term = self.err_sum;
 
         // DIFFERENTIAL
-        let d_term = if self.prev_value.is_nan() || self.prev_error.is_nan() {
+        let d_term = if self.init {
+            self.init = false;
             // we have no previous values, so skip the derivative calculation
             0.0
         } else {
@@ -207,5 +246,70 @@ impl Controller for PIDController {
         //        the fact that input and output can be two completely
         //        different domains
         self.err_sum = 0.0;
+    }
+}
+
+
+impl Controller<i64> for PIDController<i64> {
+    fn set_target(&mut self, target: i64) {
+        self.target = target;
+    }
+
+    fn target(&self) -> i64 {
+        self.target
+    }
+
+    fn update(&mut self, value: i64, delta_t: i64) -> i64 {
+        let error = self.target - value;
+
+        // PROPORTIONAL
+        let p_term = self.p_gain * error;
+
+        // INTEGRAL
+        self.err_sum = util::limit_range(
+            self.i_min, self.i_max,
+            self.err_sum + self.i_gain * error * delta_t
+        );
+        let i_term = self.err_sum;
+
+        // DIFFERENTIAL
+        let d_term=
+        if self.init {
+            self.init = false;
+            0
+        } else {
+            match self.d_mode {
+                DerivativeMode::OnMeasurement => {
+                    // we use -delta_v instead of delta_error to reduce "derivative kick",
+                    // see http://brettbeauregard.com/blog/2011/04/improving-the-beginner%E2%80%99s-pid-derivative-kick/
+                    self.d_gain * (self.prev_value - value) / delta_t
+                },
+                DerivativeMode::OnError => {
+                    self.d_gain * (error - self.prev_error) / delta_t
+                }
+            }
+
+        };
+
+        // store previous values
+        self.prev_value = value;
+        self.prev_error = error;
+
+        util::limit_range(
+            self.out_min, self.out_max,
+            p_term + d_term + i_term
+        )
+    }
+
+    fn reset(&mut self) {
+        self.prev_value = 0;
+        self.prev_error = 0;
+
+        // FIXME: http://brettbeauregard.com/blog/2011/04/improving-the-beginner
+        //               %E2%80%99s-pid-initialization/
+        //        suggests that this should not be there. however, it may miss
+        //        the fact that input and output can be two completely
+        //        different domains
+        self.err_sum = 0;
     }
 }
