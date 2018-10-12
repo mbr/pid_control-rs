@@ -168,7 +168,7 @@ impl PIDController<i64> {
             i_min: i64::min_value(),
             i_max: i64::max_value(),
 
-            out_min: -i64::min_value(),
+            out_min: i64::min_value(),
             out_max: i64::max_value(),
 
             d_mode: DerivativeMode::OnMeasurement,
@@ -312,4 +312,39 @@ impl Controller<i64> for PIDController<i64> {
         //        different domains
         self.err_sum = 0;
     }
+}
+
+#[cfg(test)]
+mod test {
+    use {Controller,PIDController};
+    type PIDControllerf = PIDController<f64>;
+    type PIDControlleru = PIDController<i64>;
+
+    #[test]
+    fn p_controller_f64() {
+        let mut controller : PIDController<f64> = PIDControllerf::new(5.0,0.0,0.0);
+        controller.set_target(27.03);
+        assert_eq!(controller.update(15.0, 0.5), (27.03 - 15.0) * 5.0);
+        controller.set_target(-512.57);
+        assert_eq!(controller.update(65.0,0.5), (-512.57-65.0)*5.0);
+        controller.set_target(0.0);
+        assert_eq!(controller.update(5.0,0.5), -5.0*5.0);
+        assert_eq!(controller.update(0.0,0.5), 0.0);
+        assert_eq!(controller.update(-0.1,0.5), 0.5);
+    }
+
+    #[test]
+    fn p_controller_i64() {
+        let mut controller : PIDController<i64> = PIDControlleru::new(5,0,0);
+        controller.set_target(27);
+        assert_eq!(controller.update(15, 1), (27 - 15) * 5);
+        controller.set_target(512);
+        assert_eq!(controller.update(65,1), (512-65)*5);
+        controller.set_target(0);
+        assert_eq!(controller.update(5,1), -5*5);
+        assert_eq!(controller.update(0,1), 0);
+        assert_eq!(controller.update(-1,1), 5);
+    }
+
+
 }
