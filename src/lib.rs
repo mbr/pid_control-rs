@@ -33,7 +33,7 @@ pub trait Controller<T> {
     /// Record a measurement from the plant.
     ///
     /// Records a new values. `delta_t` is the time since the last update in
-    /// seconds.
+    /// seconds. It must not be 0 as it is used in divisions.
     fn update(&mut self, value: T, delta_t: T) -> T;
 
     /// Adjust set target for the plant.
@@ -318,7 +318,7 @@ impl Controller<i64> for PIDController<i64> {
 mod test {
     use {Controller,PIDController};
     type PIDControllerf = PIDController<f64>;
-    type PIDControlleru = PIDController<i64>;
+    type PIDControlleri = PIDController<i64>;
 
     #[test]
     fn p_controller_f64() {
@@ -335,7 +335,7 @@ mod test {
 
     #[test]
     fn p_controller_i64() {
-        let mut controller : PIDController<i64> = PIDControlleru::new(5,0,0);
+        let mut controller : PIDController<i64> = PIDControlleri::new(5,0,0);
         controller.set_target(27);
         assert_eq!(controller.update(15, 1), (27 - 15) * 5);
         controller.set_target(512);
@@ -346,5 +346,34 @@ mod test {
         assert_eq!(controller.update(-1,1), 5);
     }
 
+    #[test]
+    fn p_d_controller_f64() {
+        let mut controller : PIDController<f64> = PIDControllerf::new(5.0,0.0,3.0);
+        controller.set_target(155.6);
+        assert_eq!(controller.update(15.0, 1.0), (155.6-15.0)*5.0); // No derative term
+        assert_eq!(controller.update(25.0, 1.0), (155.6-25.0)*5.0 + 3.0*(15.0-25.0));
+        assert_eq!(controller.update(55.0, 1.0), (155.6-55.0)*5.0 + 3.0*(25.0-55.0));
+        controller.set_target(0.0);
+        assert_eq!(controller.update(85.0, 1.0), (0.0-85.0)*5.0 + 3.0*(55.0-85.0));
+        assert_eq!(controller.update(1.0, 1.0), (0.0-1.0)*5.0 + 3.0*(85.0-1.0));
+        assert_eq!(controller.update(0.0, 1.0), (0.0-0.0)*5.0 + 3.0*(1.0-0.0));
+        controller.set_target(-500.0);
+        assert_eq!(controller.update(-63.0, 1.0), (-500.0-(-63.0))*5.0 + 3.0*(0.0-(-63.0)));
+    }
+
+    #[test]
+    fn p_d_controller_i64() {
+        let mut controller : PIDController<i64> = PIDControlleri::new(5,0,3);
+        controller.set_target(155);
+        assert_eq!(controller.update(15, 1), (155-15)*5); // No derative term
+        assert_eq!(controller.update(25, 1), (155-25)*5 + 3*(15-25));
+        assert_eq!(controller.update(55, 1), (155-55)*5 + 3*(25-55));
+        controller.set_target(0);
+        assert_eq!(controller.update(85, 1), (0-85)*5 + 3*(55-85));
+        assert_eq!(controller.update(1, 1), (0-1)*5 + 3*(85-1));
+        assert_eq!(controller.update(0, 1), (0-0)*5 + 3*(1-0));
+        controller.set_target(-500);
+        assert_eq!(controller.update(-63, 1), (-500-(-63))*5 + 3*(0-(-63)));
+    }
 
 }
