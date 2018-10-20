@@ -146,6 +146,18 @@ impl PIDController {
         self.out_min = min;
         self.out_max = max;
     }
+
+    /// Convenience function to set `i_min`/`i_max`
+    pub fn set_integral_limits(&mut self, min: f64, max: f64) {
+        self.i_min = min;
+        self.i_max = max;
+    }
+
+    /// Convenience function to set `out_min`/`out_max`
+    pub fn set_out_limits(&mut self, min: f64, max: f64) {
+        self.out_min = min;
+        self.out_max = max;
+    }
 }
 
 impl Controller for PIDController {
